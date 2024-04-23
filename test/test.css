@@ -1,0 +1,36 @@
+/*For all portal pages*/
+#portal {
+    position: relative;
+    width: calc(100vw - 10px);
+    text-align: center;
+}
+
+@media all and (max-width: 767.98px) {
+    #portal {
+        transform: translate(-16px, -15px);
+    }
+}
+
+@media all and (min-width: 767.99px) and (max-width: 1199.98px){
+    #portal {
+        transform: translate(-120px, -15px);
+    }
+}
+
+@media all and (min-width: 1199.99px) and (max-width: 1499.98px){
+    #portal {
+        transform: translate(-190px, -15px);
+    }
+}
+
+@media all and (min-width: 1499.99px) and (max-width: 1609.98px) {
+    #portal {
+        transform: translate(-240px, -15px);
+    }
+}
+
+@media all and (min-width: 1609.99px) {
+    #portal {
+        transform: translate(calc(615px - 50vw),-15px);
+    }
+}

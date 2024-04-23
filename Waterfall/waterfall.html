@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+
+    <div id="btn_area">
+        <div class="active btn btn-primary" id="all">All</div>
+        <div class="btn btn-primary" id="adelino">Adelino</div>
+        <div class="btn btn-primary" id="circulator">Circulator</div>
+        <div class="btn btn-primary" id="accessory">Accessory</div>
+        <div class="btn btn-primary" id="fittings">Fittings</div>
+    </div>
+    <div id="waterfall"></div>
+    <div class="mx-auto" id="loading-gif" style="width: 40px;"><img
+            src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/Loading_icon.gif/20px-Loading_icon.gif"
+            alt="Loading"></div>
+
+    <script>
+        // Define the API ask parameters to get files with the specified conditions
+        var askConditions = "Category:Product_Picture",
+                askLimit = 20,
+                askOffset = 0,
+                askParameters = "limit=" + askLimit + "|offset=" + askOffset + "|sort=Creation date|order=desc",
+                askPrintouts = "FSA Brand|FSA ForProduct";
+
+            // Define the API query parameters to get the info of the image page
+            var queryProp = 'imageinfo',
+                queryIIprop = 'timestamp|user|url|canonicaltitle|metadata|mediatype|size|dimensions';
+
+
+            // Define global variables
+            var api = new mw.Api(),
+                $galleryContainer = $('#waterfall'),       // Gallery container
+                galleryContainer = document.querySelector('#waterfall'),
+                count = 0,                                 // Counter to keep track of the number of images fetched
+                allImageLoaded = false;                    // Flag to check if all images are loaded
+            // itemWidth = 250;                           // Width of the images to be displayed in the gallery
+
+            var timer = null;                              // Timer to run the setPosition function after window resize
+
+            var observer = null,
+                isVisible = false,
+                observerTarget = document.querySelector('#loading-gif');    // Element to observe for intersection
+
+            if (observerTarget) {
+                observer = new IntersectionObserver(function (entry) {
+                    try {
+                        // console.log(entry[0]);
+                        if (entry[0].isIntersecting) {
+                            isVisible = true;
+                            fetchImages(api, askLimit, count);
+                            console.log(askLimit + ' more new images fetched');
+                        } else {
+                            isVisible = false;
+                        }
+                    } catch (error) {
+                        console.error('IntersectionObserver error:' + error);
+                    }
+                }, {
+                    threshold: 0
+                });
+
+                observer.observe(observerTarget);
+
+                var intervalId = setInterval(function () {
+                    if (allImageLoaded) {
+                        observerTarget.style.display = 'none';
+                        console.log('Total images:', count);
+                        clearInterval(intervalId);
+                        return;
+                    }
+                    if (isVisible) {
+                        observerTarget.style.display = 'none';
+                        setTimeout(function () { observerTarget.style.display = 'block'; }, 5);
+                    }
+                }, 1000);
+            } else {
+                fetchImages(api, '', '');
+            }
+
+            var $btns = $('.btn').click(function () {
+                setTimeout(setPositions, 451);
+                $btns.removeClass('active');
+                $(this).addClass('active');
+            });
+
+            var roundNumberToTwoDecimals = function (num) {
+                return Math.round(num * 100) / 100;
+            };
+
+            var replaceWhiteSpaceWithUnderscore = function (str) {
+                return String(str).replace(/\s+/g, '_');
+            };
+
+            var convertImageSizeToString = function (size) {
+                var tempKbSize = size / 1024;
+                return tempKbSize > 1024 ? roundNumberToTwoDecimals(tempKbSize / 1024) + " MB" : roundNumberToTwoDecimals(tempKbSize) + " KB";
+            };
+
+            var convertArrayToLowerString = function (arr) {
+                var tempArr = arr.map(function (item) {
+                    return item.toLowerCase();
+                });
+                return tempArr.join(' ');
+            };
+
+            // Define the API query parameters to get images in the File namespace with the specified category
+            var params = {
+                "action": "askargs",
+                "format": "json",
+                "conditions": askConditions,
+                "printouts": askPrintouts,
+                "parameters": askParameters
+            };
+
+            /* Define a function to fetch images recursively until all results are retrieved
+            / @param api {mw.Api} - MediaWiki API object
+            / @param limit {Number} - Number of images to fetch
+            / @param offset {Number} - Offset value to fetch the next batch of images
+            / @return {Promise} - Promise object to handle the asynchronous API call
+            */
+            var fetchImages = function (api, limit, offset) {
+
+                return new Promise(function (resolve, reject) {
+
+                    // Adjusting the offset value to fetch the next batch of images
+                    params.parameters = 'limit=' + limit + '|offset=' + offset + "|sort=Creation date|order=desc";
+
+                    // Send API request to get images in the specified category
+                    api.get(params).done(function (data) {
+                        if (data.query && data.query.results) {
+
+                            if (!data['query-continue-offset']) {
+                                observer.unobserve(observerTarget);
+                                observerTarget.style.display = 'none';
+                                allImageLoaded = true;
+                                console.log('All images fetched');
+                                return;
+                            }
+
+                            // Loop through each image in the category
+                            Object.keys(data.query.results).forEach(function (imageTitle) {
+
+                                var img = {
+                                    'name': replaceWhiteSpaceWithUnderscore(imageTitle.split(":", 2)[1]),
+                                    'href': "/wiki/" + replaceWhiteSpaceWithUnderscore(imageTitle),
+                                    'title': replaceWhiteSpaceWithUnderscore(imageTitle),
+                                    'fullurl': data.query.results[imageTitle].fullurl,
+                                    'namespace': data.query.results[imageTitle].namespace,
+                                    'printouts': data.query.results[imageTitle].printouts
+                                };
+
+                                var brand = [];
+                                if (img.printouts['FSA Brand'].length === 0) {
+                                    brand = [];
+                                } else if (img.printouts['FSA Brand'].length === 1) {
+                                    brand.push(replaceWhiteSpaceWithUnderscore(img.printouts['FSA Brand'][0]));
+                                } else {
+                                    Object.keys(img.printouts['FSA Brand']).forEach(function (key) {
+                                        brand.push(replaceWhiteSpaceWithUnderscore(img.printouts['FSA Brand'][key].fulltext));
+                                    });
+                                }
+
+                                var forproduct = [];
+
+                                if (img.printouts['FSA ForProduct'].length === 0) {
+                                    forproduct = [];
+                                } else if (img.printouts['FSA ForProduct'].length === 1) {
+                                    forproduct.push(replaceWhiteSpaceWithUnderscore(img.printouts['FSA ForProduct'][0]));
+                                } else {
+                                    Object.keys(img.printouts['FSA ForProduct']).forEach(function (key) {
+                                        forproduct.push(replaceWhiteSpaceWithUnderscore(img.printouts['FSA ForProduct'][key].fulltext));
+                                    });
+                                }
+
+                                img.brand = brand;
+                                img.forproduct = forproduct;
+
+                                // Define the API query parameters to get the info of the image page
+                                var imageParams = {
+                                    action: 'query',
+                                    titles: imageTitle,
+                                    prop: queryProp,
+                                    iiprop: queryIIprop,
+                                    format: 'json'
+                                };
+
+                                // Send API request to get the info of the image page
+                                api.get(imageParams).done(function (imageData) {
+                                    var pageId = Object.keys(imageData.query.pages)[0];
+                                    var imageInfo = imageData.query.pages[pageId].imageinfo[0];
+
+                                    if (imageInfo) {
+
+                                        count++;
+
+                                        img.url = imageInfo.url.replace("https://wiki.wita.de/w", "/w"); // /w/nsfr_img_auth.php/b/bd/WITA_go.future_LED.jpg
+                                        img.timestamp = imageInfo.timestamp.replace(/[-:TZ]/g, ''); // 20220701120000
+                                        img.user = imageInfo.user;
+                                        img.size = convertImageSizeToString(imageInfo.size);
+                                        img.width = imageInfo.width;
+                                        img.height = imageInfo.height;
+                                        img.type = imageInfo.mediatype;
+                                        img.extension = imageTitle.split(".").pop();
+
+                                        var imgHtml = createImageContainer(img);    // Create and append the image with the image details
+                                        setTimeout(function () { $galleryContainer.append(imgHtml); }, 10);
+
+                                        resolve('Images fetched successfully');
+                                    } else {
+                                        console.log('File path not found for', imageTitle);
+                                    }
+                                }).fail(function (error) {
+                                    reject('Query API Call Error:', error);
+                                });
+                            });
+                        } else {
+                            reject('No images found in the category');
+                        }
+                    }).fail(function (error) {
+                        console.error('Ask API Call Error:', error);
+                    });
+                });
+            };
+
+            /*
+            / @param img {Object} - Image object with the following properties:
+            /   name {String} - Image name
+            /   href {String} - Image page URL
+            /   title {String} - Image title
+            /   fullurl {String} - Image file URL
+            /   namespace {String} - Image namespace
+            /   printouts {Object} - Image printouts
+            /   url {String} - Image file URL
+            /   timestamp {String} - Image timestamp
+            /   user {String} - Image user
+            /   size {String} - Image size
+            /   width {Number} - Image width
+            /   height {Number} - Image height
+            /   type {String} - Image media type
+            /   extension {String} - Image file extension
+            / @return {void} - Creates an image container with the specified image details
+            */
+            var createImageContainer = function (img) {
+                // Create the main container div with class 'item'
+                var itemDiv = document.createElement('div');
+                itemDiv.classList.add('item');
+                itemDiv.style.left = '-1000px'; // Off-screen to the right
+                itemDiv.style.position = 'absolute';
+
+                if (img.extension.toLowerCase() === 'jpg' || img.extension.toLowerCase() === 'jpeg' || img.extension.toLowerCase() === 'png' || img.extension.toLowerCase() === 'gif') {
+                    // Create an anchor element with image details
+                    var link = document.createElement('a');
+                    link.href = img.href;
+                    link.classList.add('image');
+                    link.dataset.bsTitle = img.title;
+                    link.dataset.bsFiletimestamp = img.timestamp;
+
+                    // Create an image element
+                    var image = document.createElement('img');
+                    image.alt = img.name;
+                    image.src = img.url;
+                    image.decoding = 'async';
+                    image.width = img.width;
+                    image.height = img.height;
+                    image.dataset.fileWidth = img.width;
+                    image.dataset.fileHeight = img.height;
+
+                    image.onload = setPositions;
+
+                    // Append the image to the anchor element
+                    link.appendChild(image);
+
+                    // Create a div for image info
+                    var imgInfoDiv = document.createElement('div');
+                    imgInfoDiv.classList.add('img_info');
+
+                    // Create spans for image name and size
+                    var imgNameSpan = document.createElement('span');
+                    imgNameSpan.classList.add('img_name');
+                    imgNameSpan.textContent = img.name;
+
+                    var imgSizeSpan = document.createElement('span');
+                    imgSizeSpan.classList.add('img_size');
+                    imgSizeSpan.textContent = 'Size: ' + img.size;
+
+                    // Append the spans to the img info div
+                    imgInfoDiv.appendChild(imgNameSpan);
+                    imgInfoDiv.appendChild(imgSizeSpan);
+
+                    // Append count div, anchor element, and img info div to the main container div
+                    itemDiv.appendChild(link);
+                    itemDiv.appendChild(imgInfoDiv);
+
+                } else if (img.extension.toLowerCase() === 'mp4') {
+                    // Create a video element
+                    var video = document.createElement('video');
+                    video.src = img.url;
+                    video.width = img.width;
+                    video.height = img.height;
+                    video.decoding = 'async';
+                    video.style.maxWidth = '100%';
+                    video.style.maxHeight = '100%';
+                    video.style.width = '2000px'; // Adjust the width as needed
+                    video.style.height = 'auto'; // Adjust the height as needed
+                    video.controls = true;
+
+                    // Create a link for the video (optional)
+                    var videoLink = document.createElement('a');
+                    videoLink.href = img.href;
+
+                    video.onload = setPositions;
+                    video.appendChild(videoLink);
+
+                    // Create a div for image info
+                    var videoInfoDiv = document.createElement('div');
+                    videoInfoDiv.classList.add('img_info');
+
+                    // Create spans for image name and size
+                    var videoNameSpan = document.createElement('span');
+                    videoNameSpan.classList.add('img_name');
+                    videoNameSpan.textContent = img.name;
+
+                    var videoSizeSpan = document.createElement('span');
+                    videoSizeSpan.classList.add('img_size');
+                    videoSizeSpan.textContent = 'Size: ' + img.size;
+
+                    // Append the spans to the img info div
+                    videoInfoDiv.appendChild(videoNameSpan);
+                    videoInfoDiv.appendChild(videoSizeSpan);
+
+                    // Append count div, video element, and img info div to the main container div
+                    itemDiv.appendChild(video);
+                    itemDiv.appendChild(videoInfoDiv);
+
+                } else {
+                    // Create an anchor element
+                    var otherLink = document.createElement('a');
+                    otherLink.href = img.href;
+                    otherLink.dataset.tag = 'other';
+
+                    otherLink.onload = setPositions;
+                    // Append the anchor element to the main container div
+                    itemDiv.appendChild(otherLink);
+                }
+
+                if (img.brand.length === 0) {
+                    itemDiv.dataset.brand = 'unknown';
+                } else {
+                    itemDiv.dataset.brand = convertArrayToLowerString(img.brand);
+                }
+
+                if (img.forproduct.length === 0) {
+                    itemDiv.dataset.forproduct = 'unknown';
+                } else {
+                    itemDiv.dataset.forproduct = convertArrayToLowerString(img.forproduct);
+                }
+
+                // Append the main container div to the page (or another container)
+                // $galleryContainer.append(itemDiv);
+                return itemDiv;
+            };
+
+            // Define a function to calculate the layout parameters of the gallery container
+            // Reference: https://blog.csdn.net/s8806479/article/details/137267831
+
+            // var itemWidth = 250;                           // Width of the images to be displayed in the gallery
+
+            // var calculateLayout = function () {
+
+            //     var galleryContainerWidth = galleryContainer.clientWidth;
+            //     var columnNum = Math.floor(galleryContainerWidth / itemWidth);          // Number of columns in the gallery container
+
+            //     var spaceNum = columnNum + 1;                                           // Number of spaces inside gallery container
+            //     var remainingSpace = galleryContainerWidth - columnNum * itemWidth;     // Remaining space in the gallery container
+            //     var space = remainingSpace / spaceNum;                                  // Width of each space in the gallery container
+
+            //     return {
+            //         space: space,
+            //         columnNum: columnNum
+            //     };
+            // };
+
+            var calculateLayout = function () {
+                var galleryContainerWidth = galleryContainer.clientWidth;
+                var columnNum;
+
+                if (galleryContainerWidth > 1000) {
+                    columnNum = 4;
+                } else if (galleryContainerWidth > 750 && galleryContainerWidth <= 1000) {
+                    columnNum = 3;
+                } else if (galleryContainerWidth > 500 && galleryContainerWidth <= 750) {
+                    columnNum = 2;
+                } else {
+                    columnNum = 2;
+                }
+
+                var spaceNum = columnNum + 1;
+                var space = 10;
+                var itemWidth = (galleryContainerWidth - spaceNum * space) / columnNum;
+
+                return {
+                    space: space,
+                    columnNum: columnNum,
+                    itemWidth: itemWidth
+                };
+            };
+
+            // Define a function to set the positions of the images in the gallery container
+            var setPositions = function () {
+
+                var info = calculateLayout();
+                var nextTops = new Array(info.columnNum).fill(0);                         // Array to store the top positions of the items in each column
+                // Get the ID of the currently active button
+                var activeBtnId = $('.btn.active').attr('id');
+                var selector = '.item';
+
+                if (activeBtnId === 'all') {
+                    selector = '.item';
+                    $galleryContainer.children(selector).fadeIn(450);
+                } else {
+                    selector = '.item[data-brand="' + activeBtnId + '"]';
+                    $galleryContainer.children().not(selector).hide();
+                    $galleryContainer.children(selector).fadeIn(450);
+                }
+
+                // Select the displayed items for the specific brand
+                $galleryContainer.children(selector).each(function () {
+
+                    // Find the column with the minimum top position
+                    var minTop = Math.min.apply(null, nextTops);
+                    var index = nextTops.indexOf(minTop);
+
+                    // Set the positions of the item
+                    this.style.top = minTop + 'px';
+                    this.style.left = (index + 1) * info.space + index * info.itemWidth + 'px';
+                    this.style.width = info.itemWidth + 'px';
+                    this.style.marginBottom = info.space + 'px';
+
+                    // Update the top position for the next item in the column
+                    nextTops[index] += this.clientHeight + info.space;
+                });
+
+                // Calculate the maximum height of the gallery container based on the positions
+                var max = Math.max.apply(null, nextTops) + 10;
+                $galleryContainer.css('height', max + 'px');
+            };
+
+            // Set the positions of the images in the gallery container on window resize
+            window.onresize = function () {
+                if (timer) {
+                    clearTimeout(timer);
+                }
+                timer = setTimeout(setPositions, 100);
+            };
+    </script>
+</body>
+
+</html>
