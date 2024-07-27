@@ -2,13 +2,13 @@
 <svg id="logo-header" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 595.3 87.8">
   <defs>
     <style>
-    :root {
-      --top-bg-color: #e8eaec;
-    }
     @media (prefers-color-scheme: dark) {
       :root {
         --top-bg-color: #3b3e40;
       }
+    }
+    :root {
+      --top-bg-color: #e8eaec;
     }
       .cls-1 {
         fill: var(--top-bg-color);
